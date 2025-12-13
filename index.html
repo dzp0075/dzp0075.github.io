@@ -239,11 +239,7 @@ Miss St = Mississippi State'></textarea>
             <div class="split">
               <div>
                 <label>Week # (includes Week 0)</label>
-                <input id="weekNumberBox" type="number" min="0" max="14" step="1" value="0" />
-              </div>
-              <div class="col">
-                <label>Notes</label>
-                <div class="small">ESPN params: groups=8 (SEC), seasontype=2 (regular), year/week. Week 0 maps to ESPN week 1.</div>
+                <input id="weekNumberBox" type="number" min="1" max="14" step="1" value="0" />
               </div>
             </div>
 
@@ -342,7 +338,7 @@ Miss St = Mississippi State'></textarea>
 <script>
 (() => {
   const STORAGE_KEY = "sec_picks_espn_v1";
-  const MIN_WEEK = 1;             // ✅ Week 0 support
+  const MIN_WEEK = 1;             
   const MAX_WEEK = 14;            // regular season up through Week 14
   const DEFAULT_STANDINGS_MODE = "conf"; // "conf" | "all"
 
