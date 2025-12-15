@@ -1690,6 +1690,8 @@ Miss St = Mississippi State'></textarea>
         }
 
         async function syncWeekFromESPN() {
+          if (!isAdmin()) { alert("Admin only."); return; }
+
           const week = getWeek();
           const weekNumber = Number($("weekNumberBox").value);
           if (!Number.isFinite(weekNumber) || weekNumber < MIN_WEEK || weekNumber > MAX_WEEK) {
@@ -1733,6 +1735,8 @@ Miss St = Mississippi State'></textarea>
         }
 
         async function syncAllWeeks() {
+          if (!isAdmin()) { alert("Admin only."); return; }
+
           const y = Number($("yearBox").value || state.year);
           if (Number.isFinite(y)) state.year = y;
 
@@ -1809,12 +1813,14 @@ Miss St = Mississippi State'></textarea>
           state.teams = teams;
           saveState(); renderAll();
           setStatus("Teams saved.", "ok");
+          publishLeagueToSheets();
         });
 
         $("saveMapBtn") && ($("saveMapBtn").onclick = () => {
           state.teamMap = parseMapBox($("mapBox").value);
           saveState(); renderAll();
           setStatus("Team map saved.", "ok");
+          publishLeagueToSheets();
         });
 
         $("saveScoringBtn") && ($("saveScoringBtn").onclick = () => {
@@ -1826,6 +1832,7 @@ Miss St = Mississippi State'></textarea>
           state.scoring.poty = Number($("ptsPOTY").value || 0);
           saveState(); renderScoreboard();
           setStatus("Scoring saved.", "ok");
+          publishLeagueToSheets();
         });
 
         $("addPlayerBtn") && ($("addPlayerBtn").onclick = () => {
@@ -1876,6 +1883,7 @@ Miss St = Mississippi State'></textarea>
           saveState();
           renderScoreboard();
           setStatus("Actual biggest upset saved.", "ok");
+          publishLeagueToSheets();
         };
 
         $("adminBtn")?.addEventListener("click", () => {
@@ -1976,12 +1984,13 @@ Miss St = Mississippi State'></textarea>
         $("logoutBtn")?.addEventListener("click", logout);
 
         ensureWeekExists();
-        renderAll();
-        updateAuthUI();
+
 
         (async () => {
           await loadLeagueFromSheets();     // ✅ shared games/results/scoring
           await loadSharedFromSheets();     // ✅ shared player picks
+          renderAll();
+          updateAuthUI();
         })();
 
 
