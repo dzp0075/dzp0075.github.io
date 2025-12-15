@@ -990,6 +990,19 @@ Miss St = Mississippi State'></textarea>
           setEditingEnabled(loggedIn);
         }
 
+        function weekLockTime(week) {
+          const times = (week?.games || [])
+            .map(g => Date.parse(g.start || ""))
+            .filter(t => Number.isFinite(t));
+          if (!times.length) return null;
+          return Math.min(...times); // earliest kickoff in that week
+        }
+
+        function isWeekLocked(week) {
+          const t = weekLockTime(week);
+          if (!t) return false;
+          return Date.now() >= t; // lock at kickoff
+        }
 
         function parseMapBox(text) {
           const out = {};
@@ -1223,9 +1236,21 @@ Miss St = Mississippi State'></textarea>
         }
 
         function renderPicksUI(week) {
+          const locked = isWeekLocked(week);
           const wrap = $("picksUI");
           if (!wrap) return;
           wrap.innerHTML = "";
+          if (locked) {
+            const note = document.createElement("div");
+            note.className = "pill warn";
+            note.textContent = "Week locked (kickoff has passed). Picks are read-only.";
+            wrap.appendChild(note);
+
+            const hr = document.createElement("div");
+            hr.className = "hr";
+            wrap.appendChild(hr);
+          }
+
           const p = getActivePlayer();
           const games = week.games || [];
 
@@ -1263,6 +1288,10 @@ Miss St = Mississippi State'></textarea>
             return `<option value="${g.id}">${escapeHtml(label)}</option>`;
           }).join("");
           ddSelect.value = pk.doubleDownGameId || "";
+
+          if (locked) {
+            ddSelect.disabled = true;
+          }
 
           ddSelect.onchange = () => {
             pk.doubleDownGameId = ddSelect.value;
@@ -1302,6 +1331,11 @@ Miss St = Mississippi State'></textarea>
             `;
             const sel = div.querySelector("select[data-game]");
             sel.value = picked;
+
+            if (locked) {
+              sel.disabled = true;
+            }
+
             sel.onchange = () => {
               pk.winners[g.id] = sel.value;
               saveState();
@@ -1863,7 +1897,17 @@ Miss St = Mississippi State'></textarea>
         };
 
         $("activePlayer")?.setAttribute("disabled", "disabled");
-        $("savePicksBtn").onclick = () => { saveState(); renderScoreboard(); setStatus("Picks saved.", "ok"); queueSheetsSave(); };
+        $("savePicksBtn").onclick = () => {
+          const w = getWeek();
+          if (w && isWeekLocked(w)) {
+            alert("This week is locked (kickoff has passed).");
+            return;
+          }
+          saveState();
+          renderScoreboard();
+          setStatus("Picks saved.", "ok");
+          queueSheetsSave();
+        };
 
         $("syncESPNBtn").onclick = syncWeekFromESPN;
         $("syncAllBtn").onclick = syncAllWeeks;
