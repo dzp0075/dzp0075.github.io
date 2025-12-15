@@ -547,147 +547,240 @@ Miss St = Mississippi State'></textarea>
         const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard";
         const $ = (id) => document.getElementById(id);
 
-// ===== Google Sheets (Apps Script Web App) =====
-const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw2Gk3W5f72qFENYY52hBvspFFn3C3mUyJjY_2EkcUnhWZtA_GCJ-Gh36Oy07yZYsz6lg/exec"; // .../exec
+        // ===== Google Sheets (Apps Script Web App) =====
+        const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw2Gk3W5f72qFENYY52hBvspFFn3C3mUyJjY_2EkcUnhWZtA_GCJ-Gh36Oy07yZYsz6lg/exec"; // .../exec
 
-function seasonKey() { return String(state.year || new Date().getFullYear()); }
+        function seasonKey() { return String(state.year || new Date().getFullYear()); }
 
-// stable key for a game across devices
-function gameKey(g){
-  if (g?.eventId) return `E:${g.eventId}`;
-  return `K:${norm(g.away)}@${norm(g.home)}|${(g.start || "").slice(0,10)}`;
-}
+        // stable key for a game across devices
+        function gameKey(g) {
+          if (g?.eventId) return `E:${g.eventId}`;
+          return `K:${norm(g.away)}@${norm(g.home)}|${(g.start || "").slice(0, 10)}`;
+        }
 
-async function sheetsSavePlayerPayload(season, playerId, payload){
-  const r = await fetch(SHEETS_WEBAPP_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" }, // ✅ no CORS preflight
-    body: JSON.stringify({ season, playerId, picks: payload })
-  });
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.error || "Sheets save failed");
-}
+        async function sheetsSavePlayerPayload(season, playerId, payload) {
+          const r = await fetch(SHEETS_WEBAPP_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ✅ no CORS preflight
+            body: JSON.stringify({ season, playerId, picks: payload })
+          });
+          const j = await r.json();
+          if (!j.ok) throw new Error(j.error || "Sheets save failed");
+        }
 
 
-async function sheetsLoadSeason(season){
-  if (!SHEETS_WEBAPP_URL || SHEETS_WEBAPP_URL.includes("PASTE_")) return {};
-  const r = await fetch(`${SHEETS_WEBAPP_URL}?season=${encodeURIComponent(season)}`);
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.error || "Sheets load failed");
-  return j.players || {};
-}
+        async function sheetsLoadSeason(season) {
+          if (!SHEETS_WEBAPP_URL || SHEETS_WEBAPP_URL.includes("PASTE_")) return {};
+          const r = await fetch(`${SHEETS_WEBAPP_URL}?season=${encodeURIComponent(season)}`);
+          const j = await r.json();
+          if (!j.ok) throw new Error(j.error || "Sheets load failed");
+          return j.players || {};
+        }
 
-// Export one player's whole pick state (weekly + preseason) using stable keys.
-function buildPlayerPayload(playerId){
-  const p = state.players.find(x => x.id === playerId);
-  const payload = {
-    player: p ? { id: p.id, name: p.name, preseason: p.preseason || {} } : { id: playerId },
-    weeks: {} // weekNumber -> { winnersByKey, doubleDownKey }
-  };
+        // Export one player's whole pick state (weekly + preseason) using stable keys.
+        function buildPlayerPayload(playerId) {
+          const p = state.players.find(x => x.id === playerId);
+          const payload = {
+            player: p ? { id: p.id, name: p.name, preseason: p.preseason || {} } : { id: playerId },
+            weeks: {} // weekNumber -> { winnersByKey, doubleDownKey }
+          };
 
-  for (const wk of (state.weeks || [])) {
-    const pk = wk?.picks?.[playerId];
-    if (!pk) continue;
+          for (const wk of (state.weeks || [])) {
+            const pk = wk?.picks?.[playerId];
+            if (!pk) continue;
 
-    const winnersByKey = {};
-    for (const g of (wk.games || [])) {
-      const picked = pk.winners?.[g.id] || "";
-      if (picked) winnersByKey[gameKey(g)] = picked;
-    }
+            const winnersByKey = {};
+            for (const g of (wk.games || [])) {
+              const picked = pk.winners?.[g.id] || "";
+              if (picked) winnersByKey[gameKey(g)] = picked;
+            }
 
-    let doubleDownKey = "";
-    if (pk.doubleDownGameId) {
-      const ddGame = (wk.games || []).find(x => x.id === pk.doubleDownGameId);
-      if (ddGame) doubleDownKey = gameKey(ddGame);
-    }
+            let doubleDownKey = "";
+            if (pk.doubleDownGameId) {
+              const ddGame = (wk.games || []).find(x => x.id === pk.doubleDownGameId);
+              if (ddGame) doubleDownKey = gameKey(ddGame);
+            }
 
-    payload.weeks[String(wk.weekNumber)] = { winnersByKey, doubleDownKey };
-  }
+            payload.weeks[String(wk.weekNumber)] = { winnersByKey, doubleDownKey };
+          }
 
-  return payload;
-}
+          return payload;
+        }
 
-// Apply payload (from Sheets) into local state by matching stable keys to this browser's game ids.
-function applyPlayerPayload(payload){
-  if (!payload) return;
+        // Apply payload (from Sheets) into local state by matching stable keys to this browser's game ids.
+        function applyPlayerPayload(payload) {
+          if (!payload) return;
 
-  const player = payload.player || {};
-  const playerId = String(player.id || "").trim();
-  if (!playerId) return;
+          const player = payload.player || {};
+          const playerId = String(player.id || "").trim();
+          if (!playerId) return;
 
-  // ensure player exists locally (so scoreboard shows them)
-  let p = state.players.find(x => x.id === playerId);
-  if (!p) {
-    p = {
-      id: playerId,
-      name: String(player.name || `Player ${playerId.slice(0,6)}`),
-      preseason: player.preseason || { standingsOrder: [], records: {}, biggestUpset: "" }
-    };
-    state.players.push(p);
-  } else {
-    if (player.name) p.name = String(player.name);
-    if (player.preseason) p.preseason = player.preseason;
-  }
+          // ensure player exists locally (so scoreboard shows them)
+          let p = state.players.find(x => x.id === playerId);
+          if (!p) {
+            p = {
+              id: playerId,
+              name: String(player.name || `Player ${playerId.slice(0, 6)}`),
+              preseason: player.preseason || { standingsOrder: [], records: {}, biggestUpset: "" }
+            };
+            state.players.push(p);
+          } else {
+            if (player.name) p.name = String(player.name);
+            if (player.preseason) p.preseason = player.preseason;
+          }
 
-  const weeksObj = payload.weeks || {};
-  for (const wk of (state.weeks || [])) {
-    const wkKey = String(wk.weekNumber);
-    const saved = weeksObj[wkKey];
-    if (!saved) continue;
+          const weeksObj = payload.weeks || {};
+          for (const wk of (state.weeks || [])) {
+            const wkKey = String(wk.weekNumber);
+            const saved = weeksObj[wkKey];
+            if (!saved) continue;
 
-    if (!wk.picks) wk.picks = {};
-    if (!wk.picks[playerId]) wk.picks[playerId] = { winners: {}, doubleDownGameId: "" };
+            if (!wk.picks) wk.picks = {};
+            if (!wk.picks[playerId]) wk.picks[playerId] = { winners: {}, doubleDownGameId: "" };
 
-    const pk = wk.picks[playerId];
-    const byKey = saved.winnersByKey || {};
+            const pk = wk.picks[playerId];
+            const byKey = saved.winnersByKey || {};
 
-    // build lookup key -> game.id
-    const keyToId = new Map((wk.games || []).map(g => [gameKey(g), g.id]));
+            // build lookup key -> game.id
+            const keyToId = new Map((wk.games || []).map(g => [gameKey(g), g.id]));
 
-    // fill winners
-    pk.winners ||= {};
-    for (const g of (wk.games || [])) {
-      const k = gameKey(g);
-      if (byKey[k] != null) pk.winners[g.id] = byKey[k];
-    }
+            // fill winners
+            pk.winners ||= {};
+            for (const g of (wk.games || [])) {
+              const k = gameKey(g);
+              if (byKey[k] != null) pk.winners[g.id] = byKey[k];
+            }
 
-    // set double-down
-    const ddKey = saved.doubleDownKey || "";
-    pk.doubleDownGameId = ddKey && keyToId.has(ddKey) ? keyToId.get(ddKey) : "";
-  }
-}
+            // set double-down
+            const ddKey = saved.doubleDownKey || "";
+            pk.doubleDownGameId = ddKey && keyToId.has(ddKey) ? keyToId.get(ddKey) : "";
+          }
+        }
 
-// Debounced autosave to Sheets (avoid spamming)
-let __sheetsSaveTimer = null;
-function queueSheetsSave(){
-  clearTimeout(__sheetsSaveTimer);
-  __sheetsSaveTimer = setTimeout(async () => {
-    const sp = getSessionPlayer();
-    if (!sp) return;
-    try {
-      const payload = buildPlayerPayload(sp.id);
-      await sheetsSavePlayerPayload(seasonKey(), sp.id, payload);
-      // optional: setStatus("Saved to Sheets.", "ok");
-    } catch (e) {
-      console.warn(e);
-      // optional: setStatus("Sheets save failed.", "bad");
-    }
-  }, 600);
-}
+        // Debounced autosave to Sheets (avoid spamming)
+        let __sheetsSaveTimer = null;
+        function queueSheetsSave() {
+          clearTimeout(__sheetsSaveTimer);
+          __sheetsSaveTimer = setTimeout(async () => {
+            const sp = getSessionPlayer();
+            if (!sp) return;
+            try {
+              const payload = buildPlayerPayload(sp.id);
+              await sheetsSavePlayerPayload(seasonKey(), sp.id, payload);
+              // optional: setStatus("Saved to Sheets.", "ok");
+            } catch (e) {
+              console.warn(e);
+              // optional: setStatus("Sheets save failed.", "bad");
+            }
+          }, 600);
+        }
 
-async function loadSharedFromSheets(){
-  try {
-    const season = seasonKey();
-    const players = await sheetsLoadSeason(season); // { playerId: payload, ... }
-    Object.values(players).forEach(applyPlayerPayload);
-    saveState();
-    renderAll();
-    setStatus("Loaded shared picks from Sheets.", "ok");
-  } catch (e) {
-    console.warn(e);
-  }
-}
-// =============================================
+        async function loadSharedFromSheets() {
+          try {
+            const season = seasonKey();
+            const players = await sheetsLoadSeason(season); // { playerId: payload, ... }
+            Object.values(players).forEach(applyPlayerPayload);
+            saveState();
+            renderAll();
+            setStatus("Loaded shared picks from Sheets.", "ok");
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+
+        const LEAGUE_ID = "__LEAGUE__";
+
+        function buildLeagueSnapshot() {
+          return {
+            version: 1,
+            year: state.year,
+            teams: state.teams,
+            teamMap: state.teamMap,
+            scoring: state.scoring,
+            standingsMode: state.standingsMode,
+            preseasonActual: state.preseasonActual,
+            weeks: (state.weeks || []).map(w => ({
+              id: w.id,
+              name: w.name,
+              weekNumber: w.weekNumber,
+              games: (w.games || []).map(g => ({
+                eventId: g.eventId || "",
+                away: g.away,
+                home: g.home,
+                confGame: !!g.confGame,
+                start: g.start || "",
+                awayScore: g.awayScore,
+                homeScore: g.homeScore,
+                winner: g.winner || ""
+              }))
+            }))
+          };
+        }
+
+        function applyLeagueSnapshot(snap) {
+          if (!snap || !snap.weeks) return;
+
+          state.year = snap.year ?? state.year;
+          state.teams = Array.isArray(snap.teams) ? snap.teams : state.teams;
+          state.teamMap = snap.teamMap || state.teamMap;
+          state.scoring = snap.scoring || state.scoring;
+          state.standingsMode = snap.standingsMode || state.standingsMode;
+          state.preseasonActual = snap.preseasonActual || state.preseasonActual;
+
+          // Replace weeks/games with shared ones
+          if (!Array.isArray(state.weeks)) state.weeks = [];
+          const byWeekNum = new Map(state.weeks.map(w => [String(w.weekNumber), w]));
+          for (const sw of snap.weeks) {
+            const k = String(sw.weekNumber);
+            let w = byWeekNum.get(k);
+            if (!w) {
+              w = { id: uid(), name: `Week ${sw.weekNumber}`, weekNumber: sw.weekNumber, games: [], picks: {} };
+              state.weeks.push(w);
+              byWeekNum.set(k, w);
+            }
+            w.name = sw.name || w.name;
+            w.weekNumber = sw.weekNumber;
+
+            // Rebuild games with stable ids in THIS browser
+            w.games = (sw.games || []).map(g => ({
+              id: uid(),
+              eventId: g.eventId || "",
+              away: g.away,
+              home: g.home,
+              confGame: !!g.confGame,
+              start: g.start || "",
+              awayScore: g.awayScore ?? null,
+              homeScore: g.homeScore ?? null,
+              winner: g.winner || ""
+            }));
+          }
+
+          // keep ordering
+          state.weeks.sort((a, b) => a.weekNumber - b.weekNumber);
+        }
+
+        async function publishLeagueToSheets() {
+          if (!isAdmin()) return;
+          try {
+            const snap = buildLeagueSnapshot();
+            await sheetsSavePlayerPayload(seasonKey(), LEAGUE_ID, snap);
+          } catch (e) {
+            console.warn("publishLeagueToSheets:", e);
+          }
+        }
+
+        async function loadLeagueFromSheets() {
+          try {
+            const players = await sheetsLoadSeason(seasonKey()); // returns {playerId: payload}
+            const league = players[LEAGUE_ID];
+            if (league) applyLeagueSnapshot(league);
+          } catch (e) {
+            console.warn("loadLeagueFromSheets:", e);
+          }
+        }
+
+
+        // =============================================
 
 
 
@@ -1616,6 +1709,7 @@ async function loadSharedFromSheets(){
             setStatus(`Synced Week ${weekNumber} (${week.games.length} games)`, "ok");
             renderAll();
             renderActuals();
+            await loadLeagueFromSheets();
             loadSharedFromSheets();
           } catch (e) {
             console.error(e);
@@ -1658,6 +1752,7 @@ async function loadSharedFromSheets(){
             setStatus(`All weeks synced (${state.year}).`, "ok");
             renderAll();
             renderActuals();
+            await loadLeagueFromSheets();
             loadSharedFromSheets();
           } catch (e) {
             console.error(e);
@@ -1761,7 +1856,7 @@ async function loadSharedFromSheets(){
         };
 
         $("activePlayer")?.setAttribute("disabled", "disabled");
-        $("savePicksBtn").onclick = () => { saveState(); renderScoreboard(); setStatus("Picks saved.", "ok"); queueSheetsSave();};
+        $("savePicksBtn").onclick = () => { saveState(); renderScoreboard(); setStatus("Picks saved.", "ok"); queueSheetsSave(); };
 
         $("syncESPNBtn").onclick = syncWeekFromESPN;
         $("syncAllBtn").onclick = syncAllWeeks;
@@ -1883,7 +1978,14 @@ async function loadSharedFromSheets(){
         ensureWeekExists();
         renderAll();
         updateAuthUI();
-        loadSharedFromSheets();
+
+        (async () => {
+          await loadLeagueFromSheets();     // ✅ shared games/results/scoring
+          await loadSharedFromSheets();     // ✅ shared player picks
+        })();
+
+
+
       })();
     </script>
 
